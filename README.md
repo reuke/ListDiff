@@ -1,3 +1,5 @@
+**This was forked to add support for custom `EqualityComparer<T>`.**
+
 # ListDiff
 C# algorithm for diffing two lists of objects. The implementation and tests are heavily based on
 [Google's Diff-Match-Patch](https://github.com/lqc/google-diff-match-patch) - that's a 3rd party mirror of the
