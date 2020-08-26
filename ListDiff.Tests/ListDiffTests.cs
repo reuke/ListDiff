@@ -10,28 +10,33 @@ namespace ListDiff.Tests
     {
         [TestMethod]        
         public void diff_commonPrefixTest()
-        {            
-            Assert.AreEqual(0, ListDiff.GetCommonPrefix("abc".ToCharArray(), "xyz".ToCharArray()));
-            Assert.AreEqual(4, ListDiff.GetCommonPrefix("1234abcdef".ToCharArray(), "1234xyz".ToCharArray()));
-            Assert.AreEqual(4, ListDiff.GetCommonPrefix("1234".ToCharArray(), "1234xyz".ToCharArray()));
+        {
+            var equalityComparer = EqualityComparer<char>.Default;
+
+            Assert.AreEqual(0, ListDiff.GetCommonPrefix("abc".ToCharArray(), "xyz".ToCharArray(), equalityComparer));
+            Assert.AreEqual(4, ListDiff.GetCommonPrefix("1234abcdef".ToCharArray(), "1234xyz".ToCharArray(), equalityComparer));
+            Assert.AreEqual(4, ListDiff.GetCommonPrefix("1234".ToCharArray(), "1234xyz".ToCharArray(), equalityComparer));
         }
 
         [TestMethod]
         public void diff_commonSuffixTest()
         {
-            
-            Assert.AreEqual(0, ListDiff.GetCommonSuffix("abc".ToCharArray(), "xyz".ToCharArray()));
-            Assert.AreEqual(4, ListDiff.GetCommonSuffix("abcdef1234".ToCharArray(), "xyz1234".ToCharArray()));
-            Assert.AreEqual(4, ListDiff.GetCommonSuffix("1234".ToCharArray(), "xyz1234".ToCharArray()));
+            var equalityComparer = EqualityComparer<char>.Default;
+
+            Assert.AreEqual(0, ListDiff.GetCommonSuffix("abc".ToCharArray(), "xyz".ToCharArray(), equalityComparer));
+            Assert.AreEqual(4, ListDiff.GetCommonSuffix("abcdef1234".ToCharArray(), "xyz1234".ToCharArray(), equalityComparer));
+            Assert.AreEqual(4, ListDiff.GetCommonSuffix("1234".ToCharArray(), "xyz1234".ToCharArray(), equalityComparer));
         }
 
         [TestMethod]
         public void diff_halfmatchTest()
         {
-            Assert.IsNull(ListDiff.GetHalfMatch("1234567890".ToCharArray(), "abcdef".ToCharArray()));
+            var equalityComparer = EqualityComparer<char>.Default;
+
+            Assert.IsNull(ListDiff.GetHalfMatch("1234567890".ToCharArray(), "abcdef".ToCharArray(), equalityComparer));
 
             Func<string, string, string[]> test =
-                (a, b) => ListDiff.GetHalfMatch(a.ToCharArray(), b.ToCharArray()).Select(r => new string(r.ToArray())).ToArray();
+                (a, b) => ListDiff.GetHalfMatch(a.ToCharArray(), b.ToCharArray(), equalityComparer).Select(r => new string(r.ToArray())).ToArray();
 
             CollectionAssert.AreEqual(new[] { "12", "90", "a", "z", "345678" }, test("1234567890", "a345678z"));
 
@@ -47,51 +52,53 @@ namespace ListDiff.Tests
         [TestMethod]
         public void diff_cleanupMergeTest()
         {
+            var equalityComparer = EqualityComparer<char>.Default;
+
             // Cleanup a messy diff.
             var diffs = new List<Diff<char>>();
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>>(), diffs);
 
             Func<Operation, string, Diff<char>> makeDiff = (o, s) => new Diff<char>(o, s.ToCharArray());
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "a"), makeDiff(Operation.Delete, "b"), makeDiff(Operation.Insert, "c") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Equal, "a"), makeDiff(Operation.Delete, "b"), makeDiff(Operation.Insert, "c") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "a"), makeDiff(Operation.Equal, "b"), makeDiff(Operation.Equal, "c") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Equal, "abc") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Delete, "a"), makeDiff(Operation.Delete, "b"), makeDiff(Operation.Delete, "c") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Delete, "abc") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Insert, "a"), makeDiff(Operation.Insert, "b"), makeDiff(Operation.Insert, "c") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Insert, "abc") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Delete, "a"), makeDiff(Operation.Insert, "b"), makeDiff(Operation.Delete, "c"), makeDiff(Operation.Insert, "d"), makeDiff(Operation.Equal, "e"), makeDiff(Operation.Equal, "f") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Delete, "ac"), makeDiff(Operation.Insert, "bd"), makeDiff(Operation.Equal, "ef") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Delete, "a"), makeDiff(Operation.Insert, "abc"), makeDiff(Operation.Delete, "dc") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Equal, "a"), makeDiff(Operation.Delete, "d"), makeDiff(Operation.Insert, "b"), makeDiff(Operation.Equal, "c") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "a"), makeDiff(Operation.Insert, "ba"), makeDiff(Operation.Equal, "c") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Insert, "ab"), makeDiff(Operation.Equal, "ac") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "c"), makeDiff(Operation.Insert, "ab"), makeDiff(Operation.Equal, "a") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Equal, "ca"), makeDiff(Operation.Insert, "ba") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "a"), makeDiff(Operation.Delete, "b"), makeDiff(Operation.Equal, "c"), makeDiff(Operation.Delete, "ac"), makeDiff(Operation.Equal, "x") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Delete, "abc"), makeDiff(Operation.Equal, "acx") }, diffs);
 
             diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "x"), makeDiff(Operation.Delete, "ca"), makeDiff(Operation.Equal, "c"), makeDiff(Operation.Delete, "b"), makeDiff(Operation.Equal, "a") };
-            ListDiff.CleanupMerge(diffs);
+            ListDiff.CleanupMerge(diffs, equalityComparer);
             CollectionAssert.AreEqual(new List<Diff<char>> { makeDiff(Operation.Equal, "xca"), makeDiff(Operation.Delete, "cba") }, diffs);
         }
 
@@ -261,13 +268,15 @@ namespace ListDiff.Tests
         [TestMethod]
         public void diff_mainTest()
         {
+            var equalityComparer = EqualityComparer<char>.Default;
+
             Func<Operation, string, Diff<char>> makeDiff = (o, s) => new Diff<char>(o, s.ToCharArray());
 
             TimeSpan? timeout = null;
             var threshold = 32;
 
             // ReSharper disable once AccessToModifiedClosure
-            Func<string, string, List<Diff<char>>> compare = (x, y) => ListDiff.Compare(x.ToCharArray(), y.ToCharArray(), timeout, threshold).ToList();
+            Func<string, string, List<Diff<char>>> compare = (x, y) => ListDiff.Compare(x.ToCharArray(), y.ToCharArray(), equalityComparer, timeout, threshold).ToList();
             
             // Perform a trivial diff.
             List<Diff<char>> diffs = new List<Diff<char>> { makeDiff(Operation.Equal, "abc") };
@@ -317,7 +326,7 @@ namespace ListDiff.Tests
                 a = a + a;
                 b = b + b;
             }
-            Assert.IsNull(new ListDiff(timeout.Value, threshold).GetMap(a.ToCharArray(), b.ToCharArray()), "Compare: Timeout.");
+            Assert.IsNull(new ListDiff(timeout.Value, threshold).GetMap(a.ToCharArray(), b.ToCharArray(), equalityComparer), "Compare: Timeout.");
         }        
     }
 }

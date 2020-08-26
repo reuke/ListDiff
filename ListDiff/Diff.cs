@@ -5,6 +5,9 @@ namespace ListDiff
 {
     public class Diff<T>
     {
+        private Operation equal;
+        private IReadOnlyList<T> commonsuffix;
+
         public Operation Operation { get; }
         
         public IReadOnlyList<T> Items { get; set; }

@@ -33,7 +33,7 @@ namespace ListDiff
             return list?.GetRange(start, length) ?? target.Skip(start).Take(length).ToList();
         }
 
-        private static bool CompareRange<T>(IReadOnlyList<T> listA, int offsetA, IReadOnlyList<T> listB, int offsetB, int count)
+        private static bool CompareRange<T>(IReadOnlyList<T> listA, int offsetA, IReadOnlyList<T> listB, int offsetB, int count, IEqualityComparer<T> equalityComparer)
         {
             for (var j = 0; j < count; j++)
             {
@@ -46,12 +46,12 @@ namespace ListDiff
             return true;
         }
 
-        public static int IndexOf<T>(this IReadOnlyList<T> target, IReadOnlyList<T> other, int start = 0)
+        public static int IndexOf<T>(this IReadOnlyList<T> target, IReadOnlyList<T> other, IEqualityComparer<T> equalityComparer, int start = 0)
         {
             var end = target.Count - other.Count;
             for (var i = start; i < end; i++)
             {
-                if (CompareRange(target, i, other, 0, other.Count))
+                if (CompareRange(target, i, other, 0, other.Count, equalityComparer))
                 {
                     return i;
                 }                
@@ -60,9 +60,9 @@ namespace ListDiff
             return -1;
         }
 
-        public static bool EqualsAt<T>(this IReadOnlyList<T> target, int targetPos, IReadOnlyList<T> other, int otherPos)
+        public static bool EqualsAt<T>(this IReadOnlyList<T> target, int targetPos, IReadOnlyList<T> other, int otherPos, IEqualityComparer<T> equalityComparer)
         {
-            return EqualityComparer<T>.Default.Equals(target[targetPos], other[otherPos]);            
+            return equalityComparer.Equals(target[targetPos], other[otherPos]);            
         }        
     }
 }

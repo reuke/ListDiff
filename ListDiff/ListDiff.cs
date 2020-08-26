@@ -17,7 +17,8 @@ namespace ListDiff
 
         public static IEnumerable<Diff<T>> Compare<T>(
             IReadOnlyList<T> text1, 
-            IReadOnlyList<T> text2,
+            IReadOnlyList<T> text2, 
+            IEqualityComparer<T> equalityComparer = null,
             TimeSpan? timeSpan = null,
             int diffDualThreshold = 32)
         {
@@ -26,10 +27,15 @@ namespace ListDiff
                 timeSpan = TimeSpan.FromSeconds(1.0f);
             }
 
-            return new ListDiff(timeSpan.Value, diffDualThreshold).CompareUsingOptions(text1, text2);
+            if (equalityComparer == null)
+            {
+                equalityComparer = EqualityComparer<T>.Default;
+            }
+
+            return new ListDiff(timeSpan.Value, diffDualThreshold).CompareUsingOptions(text1, text2, equalityComparer);
         }
 
-        internal List<Diff<T>> CompareUsingOptions<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2)
+        internal List<Diff<T>> CompareUsingOptions<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2, IEqualityComparer<T> equalityComparer)
         {
             // Check for equality (speedup)
             if (text1.SequenceEqual(text2))
@@ -38,19 +44,19 @@ namespace ListDiff
             }
 
             // Trim off common prefix (speedup)
-            var commonlength = GetCommonPrefix(text1, text2);
+            var commonlength = GetCommonPrefix(text1, text2, equalityComparer);
             var commonprefix = text1.Substring(0, commonlength);
             text1 = text1.Substring(commonlength);
             text2 = text2.Substring(commonlength);
 
             // Trim off common suffix (speedup)
-            commonlength = GetCommonSuffix(text1, text2);
+            commonlength = GetCommonSuffix(text1, text2, equalityComparer);
             var commonsuffix = text1.Substring(text1.Count - commonlength);
             text1 = text1.Substring(0, text1.Count - commonlength);
             text2 = text2.Substring(0, text2.Count - commonlength);
 
             // Compute the diff on the middle block
-            var diffs = Compute(text1, text2);
+            var diffs = Compute(text1, text2, equalityComparer);
 
             // Restore the prefix and suffix
             if (commonprefix.Count != 0)
@@ -62,11 +68,11 @@ namespace ListDiff
                 diffs.Add(new Diff<T>(Operation.Equal, commonsuffix));
             }
 
-            CleanupMerge(diffs);
+            CleanupMerge(diffs, equalityComparer);
             return diffs;
         }
 
-        private List<Diff<T>> Compute<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2)
+        private List<Diff<T>> Compute<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2, IEqualityComparer<T> equalityComparer)
         {
             var diffs = new List<Diff<T>>();
 
@@ -86,7 +92,7 @@ namespace ListDiff
 
             var longtext = text1.Count > text2.Count ? text1 : text2;
             var shorttext = text1.Count > text2.Count ? text2 : text1;
-            var i = longtext.IndexOf(shorttext);
+            var i = longtext.IndexOf(shorttext, equalityComparer);
             if (i != -1)
             {
                 // Shorter Items is inside the longer Items (speedup)
@@ -98,7 +104,7 @@ namespace ListDiff
             }
             
             // Check to see if the problem can be split in two.
-            var hm = GetHalfMatch(text1, text2);
+            var hm = GetHalfMatch(text1, text2, equalityComparer);
             if (hm != null)
             {
                 // A half-match was found, sort out the return data.
@@ -108,8 +114,8 @@ namespace ListDiff
                 var text2B = hm[3];
                 var midCommon = hm[4];
                 // Send both pairs off for separate processing.
-                var diffsA = CompareUsingOptions(text1A, text2A);
-                var diffsB = CompareUsingOptions(text1B, text2B);
+                var diffsA = CompareUsingOptions(text1A, text2A, equalityComparer);
+                var diffsB = CompareUsingOptions(text1B, text2B, equalityComparer);
                 // Merge the results.
                 diffs = diffsA;
                 diffs.Add(new Diff<T>(Operation.Equal, midCommon));
@@ -117,14 +123,14 @@ namespace ListDiff
                 return diffs;
             }
             
-            diffs = GetMap(text1, text2);
+            diffs = GetMap(text1, text2, equalityComparer);
             return diffs ?? new List<Diff<T>>
             {
                 new Diff<T>(Operation.Delete, text1), new Diff<T>(Operation.Insert, text2)
             };
         }
         
-        internal List<Diff<T>> GetMap<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2)
+        internal List<Diff<T>> GetMap<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2, IEqualityComparer<T> equalityComparer)
         {
             var msEnd = DateTime.Now + _diffTimeout;
             // Cache the Items lengths to prevent multiple calls.
@@ -180,7 +186,7 @@ namespace ListDiff
                         }
                     }
                     while (!done && x < text1Length && y < text2Length
-                           && text1.EqualsAt(x, text2, y))
+                           && text1.EqualsAt(x, text2, y, equalityComparer))
                     {
                         x++;
                         y++;
@@ -247,7 +253,7 @@ namespace ListDiff
                             footsteps.Add(footstep, d);
                         }
                         while (!done && x < text1Length && y < text2Length
-                               && text1.EqualsAt(text1Length - x - 1, text2, text2Length - y - 1))
+                               && text1.EqualsAt(text1Length - x - 1, text2, text2Length - y - 1, equalityComparer))
                         {
                             x++;
                             y++;
@@ -420,13 +426,13 @@ namespace ListDiff
             return result;
         }
         
-        internal static int GetCommonPrefix<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2)
+        internal static int GetCommonPrefix<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2, IEqualityComparer<T> equalityComparer)
         {
             // Performance analysis: http://neil.fraser.name/news/2007/10/09/
             var n = Math.Min(text1.Count, text2.Count);
             for (var i = 0; i < n; i++)
             {
-                if (!text1.EqualsAt(i, text2, i))
+                if (!text1.EqualsAt(i, text2, i, equalityComparer))
                 {
                     return i;
                 }
@@ -434,7 +440,7 @@ namespace ListDiff
             return n;
         }
 
-        internal static int GetCommonSuffix<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2)
+        internal static int GetCommonSuffix<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2, IEqualityComparer<T> equalityComparer)
         {
             // Performance analysis: http://neil.fraser.name/news/2007/10/09/
             var text1Length = text1.Count;
@@ -442,7 +448,7 @@ namespace ListDiff
             var n = Math.Min(text1.Count, text2.Count);
             for (var i = 1; i <= n; i++)
             {
-                if (!text1.EqualsAt(text1Length - i, text2, text2Length - i))
+                if (!text1.EqualsAt(text1Length - i, text2, text2Length - i, equalityComparer))
                 {
                     return i - 1;
                 }
@@ -450,7 +456,7 @@ namespace ListDiff
             return n;
         }
 
-        internal static IReadOnlyList<T>[] GetHalfMatch<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2)
+        internal static IReadOnlyList<T>[] GetHalfMatch<T>(IReadOnlyList<T> text1, IReadOnlyList<T> text2, IEqualityComparer<T> equalityComparer)
         {
             var longtext = text1.Count > text2.Count ? text1 : text2;
             var shorttext = text1.Count > text2.Count ? text2 : text1;
@@ -460,11 +466,9 @@ namespace ListDiff
             }
 
             // First check if the second quarter is the seed for a half-match.
-            var hm1 = GetHalfMatchI(longtext, shorttext,
-                                           (longtext.Count + 3) / 4);
+            var hm1 = GetHalfMatchI(longtext, shorttext, (longtext.Count + 3) / 4, equalityComparer);
             // Check again based on the third quarter.
-            var hm2 = GetHalfMatchI(longtext, shorttext,
-                                           (longtext.Count + 1) / 2);
+            var hm2 = GetHalfMatchI(longtext, shorttext, (longtext.Count + 1) / 2, equalityComparer);
             IReadOnlyList<T>[] hm;
             if (hm1 == null && hm2 == null)
             {
@@ -488,7 +492,7 @@ namespace ListDiff
             return text1.Count > text2.Count ? hm : new [] { hm[2], hm[3], hm[0], hm[1], hm[4] };
         }
 
-        private static IReadOnlyList<T>[] GetHalfMatchI<T>(IReadOnlyList<T> longtext, IReadOnlyList<T> shorttext, int i)
+        private static IReadOnlyList<T>[] GetHalfMatchI<T>(IReadOnlyList<T> longtext, IReadOnlyList<T> shorttext, int i, IEqualityComparer<T> equalityComparer)
         {
             // Start with a 1/4 length Substring at position i as a seed.
             var seed = longtext.Substring(i, longtext.Count / 4);
@@ -496,12 +500,14 @@ namespace ListDiff
             IReadOnlyList<T> bestCommon = EmptyList<T>.Instance;
             IReadOnlyList<T> bestLongtextA = EmptyList<T>.Instance, bestLongtextB = EmptyList<T>.Instance;
             IReadOnlyList<T> bestShorttextA = EmptyList<T>.Instance, bestShorttextB = EmptyList<T>.Instance;
-            while (j < shorttext.Count && (j = shorttext.IndexOf(seed, j + 1)) != -1)
+            while (j < shorttext.Count && (j = shorttext.IndexOf(seed, equalityComparer, j + 1)) != -1)
             {
                 var prefixLength = GetCommonPrefix(longtext.Substring(i),
-                                                     shorttext.Substring(j));
+                                                   shorttext.Substring(j),
+                                                   equalityComparer);
                 var suffixLength = GetCommonSuffix(longtext.Substring(0, i),
-                                                     shorttext.Substring(0, j));
+                                                   shorttext.Substring(0, j),
+                                                   equalityComparer);
                 if (bestCommon.Count < suffixLength + prefixLength)
                 {
                     bestCommon = shorttext.Substring(j - suffixLength, suffixLength).Concat(
@@ -520,7 +526,7 @@ namespace ListDiff
             return null;
         }
         
-        internal static void CleanupMerge<T>(List<Diff<T>> diffs)
+        internal static void CleanupMerge<T>(List<Diff<T>> diffs, IEqualityComparer<T> equalityComparer)
         {
             while (true)
             {
@@ -551,7 +557,7 @@ namespace ListDiff
                                 if (countDelete != 0 && countInsert != 0)
                                 {
                                     // Factor out any common prefixies.
-                                    var commonlength = GetCommonPrefix(textInsert, textDelete);
+                                    var commonlength = GetCommonPrefix(textInsert, textDelete, equalityComparer);
                                     if (commonlength != 0)
                                     {
                                         if ((pointer - countDelete - countInsert) > 0 && diffs[pointer - countDelete - countInsert - 1].Operation == Operation.Equal)
@@ -568,7 +574,7 @@ namespace ListDiff
                                         textDelete = textDelete.Substring(commonlength);
                                     }
                                     // Factor out any common suffixies.
-                                    commonlength = GetCommonSuffix(textInsert, textDelete);
+                                    commonlength = GetCommonSuffix(textInsert, textDelete, equalityComparer);
                                     if (commonlength != 0)
                                     {
                                         diffs[pointer].Items = textInsert.Substring(textInsert.Count - commonlength).Concat(diffs[pointer].Items).ToList();
